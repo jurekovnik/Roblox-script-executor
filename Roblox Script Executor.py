@@ -1,129 +1,110 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, font
 import threading
-import time
 import ctypes
-from ctypes import wintypes
+import random
+import win32gui
+import win32con
+import time
 
-# --- GDI effect using a transparent layered window (Windows only) ---
-# This will create a transparent window that draws a moving circle
+# --- Your requested GDI effect for Execute ---
+def gdi_random_icons():
+    hdc = win32gui.GetDC(0)
+    user32 = ctypes.windll.user32
+    user32.SetProcessDPIAware()
+    w, h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
 
-user32 = ctypes.windll.user32
-gdi32 = ctypes.windll.gdi32
-
-WS_EX_LAYERED = 0x80000
-WS_EX_TRANSPARENT = 0x20
-WS_EX_TOPMOST = 0x8
-LWA_ALPHA = 0x2
-
-class GDIEffectWindow:
-    def __init__(self):
-        self.hInstance = user32.GetModuleHandleW(None)
-        self.className = "GDIOverlayWindow"
-
-        wndClass = wintypes.WNDCLASS()
-        wndClass.style = 0
-        wndClass.lpfnWndProc = self.wndProc
-        wndClass.cbClsExtra = wndClass.cbWndExtra = 0
-        wndClass.hInstance = self.hInstance
-        wndClass.hIcon = user32.LoadIconW(None, wintypes.LPCWSTR(32512)) # IDI_APPLICATION
-        wndClass.hCursor = user32.LoadCursorW(None, wintypes.LPCWSTR(32512)) # IDC_ARROW
-        wndClass.hbrBackground = 0
-        wndClass.lpszMenuName = None
-        wndClass.lpszClassName = self.className
-
-        self.atom = user32.RegisterClassW(ctypes.byref(wndClass))
-        if not self.atom:
-            raise ctypes.WinError()
-
-        # Create layered window (transparent)
-        self.hwnd = user32.CreateWindowExW(
-            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST,
-            self.className,
-            "GDI Effect",
-            0x80000000 | 0x10000000,  # WS_POPUP | WS_VISIBLE
-            100, 100, 300, 300,
-            None, None, self.hInstance, None
+    while True:
+        win32gui.DrawIcon(
+            hdc,
+            random.randint(0, w),
+            random.randint(0, h),
+            win32gui.LoadIcon(None, win32con.IDI_ERROR),
         )
-        if not self.hwnd:
-            raise ctypes.WinError()
 
-        # Set layered window attributes (opacity 200 out of 255)
-        user32.SetLayeredWindowAttributes(self.hwnd, 0, 200, LWA_ALPHA)
+# --- Roblox Xeno Injection Log Window ---
+class InjectionLogWindow(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Roblox Xeno | Injection Log")
+        self.geometry("600x300")
+        self.configure(bg="#1e1e2f")
+        self.resizable(False, False)
 
-        self.dc = user32.GetDC(self.hwnd)
-        self.running = False
-        self.radius = 30
-        self.x = 50
-        self.y = 150
-        self.dx = 5
+        self.log_text = tk.Text(self, bg="#1e1e2f", fg="#d4d4d4", insertbackground="#d4d4d4",
+                                font=("Consolas", 11), state=tk.DISABLED)
+        self.log_text.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
 
-    def wndProc(self, hwnd, msg, wParam, lParam):
-        if msg == 2:  # WM_DESTROY
-            user32.PostQuitMessage(0)
-            return 0
-        return user32.DefWindowProcW(hwnd, msg, wParam, lParam)
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
 
-    def start(self):
-        self.running = True
-        threading.Thread(target=self.animate, daemon=True).start()
+        self.messages = [
+            "[INFO] Initializing Roblox Xeno...",
+            "[INFO] Checking Roblox process...",
+            "[INFO] Roblox process found (PID 1234).",
+            "[INFO] Preparing injection environment...",
+            "[INFO] Injecting payload...",
+            "[SUCCESS] Payload injected successfully.",
+            "[INFO] Attaching to Roblox client...",
+            "[SUCCESS] Attached successfully.",
+            "[INFO] Starting executor...",
+            "[SUCCESS] Executor ready.",
+            "[INFO] Injection complete. Have fun!",
+        ]
+        self.current_line = 0
+        self.after(500, self.show_next_line)
 
-    def animate(self):
-        while self.running:
-            # Clear background (transparent)
-            brush = gdi32.CreateSolidBrush(0x000000)
-            rect = wintypes.RECT(0, 0, 300, 300)
-            gdi32.FillRect(self.dc, ctypes.byref(rect), brush)
-            gdi32.DeleteObject(brush)
+    def show_next_line(self):
+        if self.current_line < len(self.messages):
+            self.log_text.config(state=tk.NORMAL)
+            self.log_text.insert(tk.END, self.messages[self.current_line] + "\n")
+            self.log_text.see(tk.END)
+            self.log_text.config(state=tk.DISABLED)
+            self.current_line += 1
+            self.after(700, self.show_next_line)
 
-            # Draw a red circle that moves horizontally
-            pen = gdi32.CreatePen(0, 3, 0x0000FF)  # Blue pen
-            old_pen = gdi32.SelectObject(self.dc, pen)
-            brush_red = gdi32.CreateSolidBrush(0x0000FF)  # Blue brush
-            old_brush = gdi32.SelectObject(self.dc, brush_red)
-
-            gdi32.Ellipse(self.dc, self.x - self.radius, self.y - self.radius, self.x + self.radius, self.y + self.radius)
-
-            gdi32.SelectObject(self.dc, old_pen)
-            gdi32.SelectObject(self.dc, old_brush)
-            gdi32.DeleteObject(pen)
-            gdi32.DeleteObject(brush_red)
-
-            self.x += self.dx
-            if self.x > 250 or self.x < 50:
-                self.dx = -self.dx
-
-            time.sleep(0.05)
-
-    def stop(self):
-        self.running = False
-        user32.DestroyWindow(self.hwnd)
+    def on_close(self):
+        self.destroy()
 
 # --- GUI Setup ---
 class ScriptExecutorApp:
     def __init__(self, root):
         self.root = root
-        root.title("Roblox Script Executor (Fake)")
+        root.title("Roblox Script Executor (Took me an hour but works)")
+        root.geometry("700x400")
+        root.configure(bg="#2c2f33")
 
-        self.text_area = tk.Text(root, height=15, width=60)
-        self.text_area.pack(padx=10, pady=10)
+        # Fonts & colors
+        self.btn_font = font.Font(family="Segoe UI", size=10, weight="bold")
+        self.text_font = font.Font(family="Consolas", size=11)
+        self.btn_bg = "#7289da"
+        self.btn_fg = "white"
+        self.text_bg = "#23272a"
+        self.text_fg = "white"
 
-        frame = tk.Frame(root)
-        frame.pack(pady=5)
+        # Left panel: buttons stacked vertically
+        self.left_frame = tk.Frame(root, bg="#2c2f33")
+        self.left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=15, pady=20)
 
-        self.open_button = tk.Button(frame, text="Open", command=self.open_file)
-        self.open_button.pack(side=tk.LEFT, padx=5)
+        self.open_button = tk.Button(self.left_frame, text="Open", font=self.btn_font, bg=self.btn_bg, fg=self.btn_fg, width=14, command=self.open_file)
+        self.open_button.pack(pady=8)
 
-        self.save_button = tk.Button(frame, text="Save", command=self.save_file)
-        self.save_button.pack(side=tk.LEFT, padx=5)
+        self.save_button = tk.Button(self.left_frame, text="Save", font=self.btn_font, bg=self.btn_bg, fg=self.btn_fg, width=14, command=self.save_file)
+        self.save_button.pack(pady=8)
 
-        self.execute_button = tk.Button(frame, text="Execute", command=self.start_gdi_effect)
-        self.execute_button.pack(side=tk.LEFT, padx=5)
+        self.clear_button = tk.Button(self.left_frame, text="Clear", font=self.btn_font, bg="#99aab5", fg=self.btn_fg, width=14, command=self.clear_text)
+        self.clear_button.pack(pady=8)
 
-        self.inject_button = tk.Button(frame, text="Inject", command=self.start_gdi_effect)
-        self.inject_button.pack(side=tk.LEFT, padx=5)
+        self.execute_button = tk.Button(self.left_frame, text="Execute", font=self.btn_font, bg="#43b581", fg=self.btn_fg, width=14, command=self.execute_gdi_effect)
+        self.execute_button.pack(pady=8)
 
-        self.gdi_effect = None
+        self.inject_button = tk.Button(self.left_frame, text="Inject", font=self.btn_font, bg="#faa61a", fg=self.btn_fg, width=14, command=self.show_injection_log)
+        self.inject_button.pack(pady=8)
+
+        # Text area on right
+        self.text_area = tk.Text(root, font=self.text_font, bg=self.text_bg, fg=self.text_fg, insertbackground="white")
+        self.text_area.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=10, pady=20)
+
+        self.execute_thread = None
 
     def open_file(self):
         filename = filedialog.askopenfilename(title="Open Script", filetypes=[("Lua Scripts", "*.lua"), ("All files", "*.*")])
@@ -141,16 +122,19 @@ class ScriptExecutorApp:
                 f.write(data)
             messagebox.showinfo("Saved", f"Script saved to {filename}")
 
-    def start_gdi_effect(self):
-        if self.gdi_effect is None:
-            try:
-                self.gdi_effect = GDIEffectWindow()
-                self.gdi_effect.start()
-                messagebox.showinfo("GDI Effect", "GDI effect started! Close the program to stop.")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to start GDI effect: {e}")
-        else:
-            messagebox.showinfo("GDI Effect", "GDI effect already running.")
+    def clear_text(self):
+        self.text_area.delete(1.0, tk.END)
+
+    def execute_gdi_effect(self):
+        if self.execute_thread and self.execute_thread.is_alive():
+            messagebox.showinfo("Info", "Execute effect already running.")
+            return
+        self.execute_thread = threading.Thread(target=gdi_random_icons, daemon=True)
+        self.execute_thread.start()
+        messagebox.showinfo("GDI Effect", "Execute GDI effect started! Close program to stop.")
+
+    def show_injection_log(self):
+        InjectionLogWindow(self.root)
 
 if __name__ == "__main__":
     root = tk.Tk()
